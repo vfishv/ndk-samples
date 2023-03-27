@@ -57,6 +57,6 @@ android {
 dependencies {
     implementation 'androidx.core:core:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.games:games-activity:1.2.2-alpha01'
+    implementation 'androidx.games:games-activity:1.2.2'
 }
 
