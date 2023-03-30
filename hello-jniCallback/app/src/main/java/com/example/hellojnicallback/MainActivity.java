@@ -63,9 +63,7 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                String ticks = "" + MainActivity.this.hour + ":" +
-                        MainActivity.this.minute + ":" +
-                        MainActivity.this.second;
+                String ticks = "" + hour + ":" + minute + ":" + second;
                 MainActivity.this.tickView.setText(ticks);
             }
         });

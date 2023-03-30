@@ -28,15 +28,16 @@ import android.util.Log;
  * The calling code is inside hello-jnicallback.c
  */
 public class JniHandler {
+    private static final String TAG = "JniHandler";
     /*
      * Print out status to logcat
      */
     @Keep
     private void updateStatus(String msg) {
         if (msg.toLowerCase().contains("error")) {
-            Log.e("JniHandler", "Native Err: " + msg);
+            Log.e(TAG, "Native Err: " + msg);
         } else {
-            Log.i("JniHandler", "Native Msg: " + msg);
+            Log.i(TAG, "Native Msg: " + msg);
         }
     }
 
@@ -45,7 +46,9 @@ public class JniHandler {
      */
     @Keep
     static public String getBuildVersion() {
-        return Build.VERSION.RELEASE;
+        String v = Build.VERSION.RELEASE;
+        Log.i(TAG, "getBuildVersion: " + v);
+        return v;
     }
 
     /*
@@ -53,6 +56,8 @@ public class JniHandler {
      */
     @Keep
     public long getRuntimeMemorySize() {
-        return Runtime.getRuntime().freeMemory();
+        long m = Runtime.getRuntime().freeMemory();
+        Log.i(TAG, "getRuntimeMemorySize: " + m);
+        return m;
     }
 }
