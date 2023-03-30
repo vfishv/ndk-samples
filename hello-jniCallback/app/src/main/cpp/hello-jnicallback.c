@@ -83,7 +83,7 @@ Java_com_example_hellojnicallback_MainActivity_stringFromJNI(JNIEnv *env,
 #define ABI "unknown"
 #endif
   return (*env)->NewStringUTF(env,
-                              "Hello from JNI !  Compiled with ABI " ABI ".");
+                              "JNI ABI " ABI ".");
 }
 
 /*
