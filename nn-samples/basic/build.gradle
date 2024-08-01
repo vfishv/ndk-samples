@@ -1,49 +1,37 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    id "ndksamples.android.application"
+    id 'ndksamples.android.kotlin'
 }
 
 android {
-    compileSdk 33
-    ndkVersion '25.1.8937393'
+    namespace 'com.example.android.basic'
 
     defaultConfig {
         applicationId "com.example.android.basic"
         minSdkVersion 27
-        targetSdkVersion 33
         versionCode 1
         versionName "1.0"
-        externalNativeBuild {
-            cmake {
-                cppFlags "-std=c++14"
-            }
-        }
     }
-    buildFeatures {
-        viewBinding true
-    }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
+
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
         }
     }
+
+    buildFeatures {
+        viewBinding true
+    }
+
     androidResources {
         noCompress 'bin'
     }
-    namespace 'com.example.android.basic'
-
 }
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    //implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.3"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4"
+    implementation libs.androidx.constraintlayout
+    implementation libs.kotlinx.coroutines.core
+    implementation libs.kotlinx.coroutines.android
 }

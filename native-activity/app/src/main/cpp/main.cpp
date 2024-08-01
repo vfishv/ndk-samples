@@ -18,8 +18,10 @@
 // BEGIN_INCLUDE(all)
 #include <EGL/egl.h>
 #include <GLES/gl.h>
+#include <android/choreographer.h>
 #include <android/log.h>
 #include <android/sensor.h>
+#include <android/set_abort_message.h>
 #include <android_native_app_glue.h>
 #include <jni.h>
 
@@ -30,15 +32,43 @@
 #include <initializer_list>
 #include <memory>
 
-#define LOGI(...) \
-  ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
-#define LOGW(...) \
-  ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
+#define LOG_TAG "native-activity"
+
+#define _LOG(priority, fmt, ...) \
+  ((void)__android_log_print((priority), (LOG_TAG), (fmt)__VA_OPT__(, ) __VA_ARGS__))
+
+#define LOGE(fmt, ...) _LOG(ANDROID_LOG_ERROR, (fmt)__VA_OPT__(, ) __VA_ARGS__)
+#define LOGW(fmt, ...) _LOG(ANDROID_LOG_WARN, (fmt)__VA_OPT__(, ) __VA_ARGS__)
+#define LOGI(fmt, ...) _LOG(ANDROID_LOG_INFO, (fmt)__VA_OPT__(, ) __VA_ARGS__)
+
+[[noreturn]] __attribute__((__format__(__printf__, 1, 2))) static void fatal(
+    const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  char* buf;
+  if (vasprintf(&buf, fmt, ap) < 0) {
+    android_set_abort_message("failed for format error message");
+  } else {
+    android_set_abort_message(buf);
+    // Also log directly, since the default Android Studio logcat filter hides
+    // the backtrace which would otherwise show the abort message.
+    LOGE("%s", buf);
+  }
+  std::abort();
+}
+
+#define CHECK_NOT_NULL(value)                                           \
+  do {                                                                  \
+    if ((value) == nullptr) {                                           \
+      fatal("%s:%d:%s must not be null", __PRETTY_FUNCTION__, __LINE__, \
+            #value);                                                    \
+    }                                                                   \
+  } while (false)
 
 /**
  * Our saved state data.
  */
-struct saved_state {
+struct SavedState {
   float angle;
   int32_t x;
   int32_t y;
@@ -47,26 +77,114 @@ struct saved_state {
 /**
  * Shared state for our app.
  */
-struct engine {
-  struct android_app* app;
+struct Engine {
+  android_app* app;
 
   ASensorManager* sensorManager;
   const ASensor* accelerometerSensor;
   ASensorEventQueue* sensorEventQueue;
 
-  int animating;
   EGLDisplay display;
   EGLSurface surface;
   EGLContext context;
   int32_t width;
   int32_t height;
-  struct saved_state state;
+  SavedState state;
+
+  void CreateSensorListener(ALooper_callbackFunc callback) {
+    CHECK_NOT_NULL(app);
+
+    sensorManager = ASensorManager_getInstance();
+    if (sensorManager == nullptr) {
+      return;
+    }
+
+    accelerometerSensor = ASensorManager_getDefaultSensor(
+        sensorManager, ASENSOR_TYPE_ACCELEROMETER);
+    sensorEventQueue = ASensorManager_createEventQueue(
+        sensorManager, app->looper, ALOOPER_POLL_CALLBACK, callback, this);
+  }
+
+  /// Resumes ticking the application.
+  void Resume() {
+    // Checked to make sure we don't double schedule Choreographer.
+    if (!running_) {
+      running_ = true;
+      ScheduleNextTick();
+    }
+  }
+
+  /// Pauses ticking the application.
+  ///
+  /// When paused, sensor and input events will still be processed, but the
+  /// update and render parts of the loop will not run.
+  void Pause() { running_ = false; }
+
+ private:
+  bool running_;
+
+  void ScheduleNextTick() {
+    AChoreographer_postFrameCallback(AChoreographer_getInstance(), Tick, this);
+  }
+
+  /// Entry point for Choreographer.
+  ///
+  /// The first argument (the frame time) is not used as it is not needed for
+  /// this sample. If you copy from this sample and make use of that argument,
+  /// note that there's an API bug: that time is a signed 32-bit nanosecond
+  /// counter on 32-bit systems, so it will roll over every ~2 seconds. If your
+  /// minSdkVersion is 29 or higher, use AChoreographer_postFrameCallback64
+  /// instead, which is 64-bits for all architectures. Otherwise, bitwise-and
+  /// the value with the upper bits from CLOCK_MONOTONIC.
+  ///
+  /// \param data The Engine being ticked.
+  static void Tick(long, void* data) {
+    CHECK_NOT_NULL(data);
+    auto engine = reinterpret_cast<Engine*>(data);
+    engine->DoTick();
+  }
+
+  void DoTick() {
+    if (!running_) {
+      return;
+    }
+
+    // Input and sensor feedback is handled via their own callbacks.
+    // Choreographer ensures that those callbacks run before this callback does.
+
+    // Choreographer does not continuously schedule the callback. We have to re-
+    // register the callback each time we're ticked.
+    ScheduleNextTick();
+    Update();
+    DrawFrame();
+  }
+
+  void Update() {
+    state.angle += .01f;
+    if (state.angle > 1) {
+      state.angle = 0;
+    }
+  }
+
+  void DrawFrame() {
+    if (display == nullptr) {
+      // No display.
+      return;
+    }
+
+    // Just fill the screen with a color.
+    glClearColor(((float)state.x) / width, state.angle,
+                 ((float)state.y) / height, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    eglSwapBuffers(display, surface);
+  }
 };
 
 /**
  * Initialize an EGL context for the current display.
  */
-static int engine_init_display(struct engine* engine) {
+static int engine_init_display(Engine* engine) {
   // initialize OpenGL ES and EGL
 
   /*
@@ -127,6 +245,10 @@ static int engine_init_display(struct engine* engine) {
   eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
   surface =
       eglCreateWindowSurface(display, config, engine->app->window, nullptr);
+
+  /* A version of OpenGL has not been specified here.  This will default to
+   * OpenGL 1.0.  You will need to change this if you want to use the newer
+   * features of OpenGL like shaders. */
   context = eglCreateContext(display, config, nullptr, nullptr);
 
   if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
@@ -160,26 +282,9 @@ static int engine_init_display(struct engine* engine) {
 }
 
 /**
- * Just the current frame in the display.
- */
-static void engine_draw_frame(struct engine* engine) {
-  if (engine->display == nullptr) {
-    // No display.
-    return;
-  }
-
-  // Just fill the screen with a color.
-  glClearColor(((float)engine->state.x) / engine->width, engine->state.angle,
-               ((float)engine->state.y) / engine->height, 1);
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  eglSwapBuffers(engine->display, engine->surface);
-}
-
-/**
  * Tear down the EGL context currently associated with the display.
  */
-static void engine_term_display(struct engine* engine) {
+static void engine_term_display(Engine* engine) {
   if (engine->display != EGL_NO_DISPLAY) {
     eglMakeCurrent(engine->display, EGL_NO_SURFACE, EGL_NO_SURFACE,
                    EGL_NO_CONTEXT);
@@ -191,7 +296,7 @@ static void engine_term_display(struct engine* engine) {
     }
     eglTerminate(engine->display);
   }
-  engine->animating = 0;
+  engine->Pause();
   engine->display = EGL_NO_DISPLAY;
   engine->context = EGL_NO_CONTEXT;
   engine->surface = EGL_NO_SURFACE;
@@ -200,11 +305,10 @@ static void engine_term_display(struct engine* engine) {
 /**
  * Process the next input event.
  */
-static int32_t engine_handle_input(struct android_app* app,
+static int32_t engine_handle_input(android_app* app,
                                    AInputEvent* event) {
-  auto* engine = (struct engine*)app->userData;
+  auto* engine = (Engine*)app->userData;
   if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
-    engine->animating = 1;
     engine->state.x = AMotionEvent_getX(event, 0);
     engine->state.y = AMotionEvent_getY(event, 0);
     return 1;
@@ -215,20 +319,19 @@ static int32_t engine_handle_input(struct android_app* app,
 /**
  * Process the next main command.
  */
-static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
-  auto* engine = (struct engine*)app->userData;
+static void engine_handle_cmd(android_app* app, int32_t cmd) {
+  auto* engine = (Engine*)app->userData;
   switch (cmd) {
     case APP_CMD_SAVE_STATE:
       // The system has asked us to save our current state.  Do so.
-      engine->app->savedState = malloc(sizeof(struct saved_state));
-      *((struct saved_state*)engine->app->savedState) = engine->state;
-      engine->app->savedStateSize = sizeof(struct saved_state);
+      engine->app->savedState = malloc(sizeof(SavedState));
+      *((SavedState*)engine->app->savedState) = engine->state;
+      engine->app->savedStateSize = sizeof(SavedState);
       break;
     case APP_CMD_INIT_WINDOW:
       // The window is being shown, get it ready.
       if (engine->app->window != nullptr) {
         engine_init_display(engine);
-        engine_draw_frame(engine);
       }
       break;
     case APP_CMD_TERM_WINDOW:
@@ -245,6 +348,7 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
                                        engine->accelerometerSensor,
                                        (1000L / 60) * 1000);
       }
+      engine->Resume();
       break;
     case APP_CMD_LOST_FOCUS:
       // When our app loses focus, we stop monitoring the accelerometer.
@@ -253,57 +357,29 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
         ASensorEventQueue_disableSensor(engine->sensorEventQueue,
                                         engine->accelerometerSensor);
       }
-      // Also stop animating.
-      engine->animating = 0;
-      engine_draw_frame(engine);
+      engine->Pause();
       break;
     default:
       break;
   }
 }
 
-/*
- * AcquireASensorManagerInstance(void)
- *    Workaround ASensorManager_getInstance() deprecation false alarm
- *    for Android-N and before, when compiling with NDK-r15
- */
-#include <dlfcn.h>
-ASensorManager* AcquireASensorManagerInstance(android_app* app) {
-  if (!app) return nullptr;
+int OnSensorEvent(int /* fd */, int /* events */, void* data) {
+  CHECK_NOT_NULL(data);
+  Engine* engine = reinterpret_cast<Engine*>(data);
 
-  typedef ASensorManager* (*PF_GETINSTANCEFORPACKAGE)(const char* name);
-  void* androidHandle = dlopen("libandroid.so", RTLD_NOW);
-  auto getInstanceForPackageFunc = (PF_GETINSTANCEFORPACKAGE)dlsym(
-      androidHandle, "ASensorManager_getInstanceForPackage");
-  if (getInstanceForPackageFunc) {
-    JNIEnv* env = nullptr;
-    app->activity->vm->AttachCurrentThread(&env, nullptr);
-
-    jclass android_content_Context = env->GetObjectClass(app->activity->clazz);
-    jmethodID midGetPackageName = env->GetMethodID(
-        android_content_Context, "getPackageName", "()Ljava/lang/String;");
-    auto packageName =
-        (jstring)env->CallObjectMethod(app->activity->clazz, midGetPackageName);
-
-    const char* nativePackageName =
-        env->GetStringUTFChars(packageName, nullptr);
-    ASensorManager* mgr = getInstanceForPackageFunc(nativePackageName);
-    env->ReleaseStringUTFChars(packageName, nativePackageName);
-    app->activity->vm->DetachCurrentThread();
-    if (mgr) {
-      dlclose(androidHandle);
-      return mgr;
-    }
+  CHECK_NOT_NULL(engine->accelerometerSensor);
+  ASensorEvent event;
+  while (ASensorEventQueue_getEvents(engine->sensorEventQueue, &event, 1) > 0) {
+    LOGI("accelerometer: x=%f y=%f z=%f", event.acceleration.x,
+         event.acceleration.y, event.acceleration.z);
   }
 
-  typedef ASensorManager* (*PF_GETINSTANCE)();
-  auto getInstanceFunc =
-      (PF_GETINSTANCE)dlsym(androidHandle, "ASensorManager_getInstance");
-  // by all means at this point, ASensorManager_getInstance should be available
-  assert(getInstanceFunc);
-  dlclose(androidHandle);
-
-  return getInstanceFunc();
+  // From the docs:
+  //
+  // Implementations should return 1 to continue receiving callbacks, or 0 to
+  // have this file descriptor and callback unregistered from the looper.
+  return 1;
 }
 
 /**
@@ -311,8 +387,8 @@ ASensorManager* AcquireASensorManagerInstance(android_app* app) {
  * android_native_app_glue.  It runs in its own thread, with its own
  * event loop for receiving input events and doing other things.
  */
-void android_main(struct android_app* state) {
-  struct engine engine {};
+void android_main(android_app* state) {
+  Engine engine {};
 
   memset(&engine, 0, sizeof(engine));
   state->userData = &engine;
@@ -321,65 +397,28 @@ void android_main(struct android_app* state) {
   engine.app = state;
 
   // Prepare to monitor accelerometer
-  engine.sensorManager = AcquireASensorManagerInstance(state);
-  engine.accelerometerSensor = ASensorManager_getDefaultSensor(
-      engine.sensorManager, ASENSOR_TYPE_ACCELEROMETER);
-  engine.sensorEventQueue = ASensorManager_createEventQueue(
-      engine.sensorManager, state->looper, LOOPER_ID_USER, nullptr, nullptr);
+  engine.CreateSensorListener(OnSensorEvent);
 
   if (state->savedState != nullptr) {
     // We are starting with a previous saved state; restore from it.
-    engine.state = *(struct saved_state*)state->savedState;
+    engine.state = *(SavedState*)state->savedState;
   }
 
-  // loop waiting for stuff to do.
-
-  while (true) {
-    // Read all pending events.
-    int ident;
-    int events;
-    struct android_poll_source* source;
-
-    // If not animating, we will block forever waiting for events.
-    // If animating, we loop until all events are read, then continue
-    // to draw the next frame of animation.
-    while ((ident = ALooper_pollAll(engine.animating ? 0 : -1, nullptr, &events,
-                                    (void**)&source)) >= 0) {
-      // Process this event.
-      if (source != nullptr) {
-        source->process(state, source);
-      }
-
-      // If a sensor has data, process it now.
-      if (ident == LOOPER_ID_USER) {
-        if (engine.accelerometerSensor != nullptr) {
-          ASensorEvent event;
-          while (ASensorEventQueue_getEvents(engine.sensorEventQueue, &event,
-                                             1) > 0) {
-            LOGI("accelerometer: x=%f y=%f z=%f", event.acceleration.x,
-                 event.acceleration.y, event.acceleration.z);
-          }
-        }
-      }
-
-      // Check if we are exiting.
-      if (state->destroyRequested != 0) {
-        engine_term_display(&engine);
-        return;
-      }
+  while (!state->destroyRequested) {
+    // Our input, sensor, and update/render logic is all driven by callbacks, so
+    // we don't need to use the non-blocking poll.
+    android_poll_source* source = nullptr;
+    auto result = ALooper_pollOnce(-1, nullptr, nullptr,
+                                   reinterpret_cast<void**>(&source));
+    if (result == ALOOPER_POLL_ERROR) {
+      fatal("ALooper_pollOnce returned an error");
     }
 
-    if (engine.animating) {
-      // Done with events; draw next animation frame.
-      engine.state.angle += .01f;
-      if (engine.state.angle > 1) {
-        engine.state.angle = 0;
-      }
-
-      // Drawing is throttled to the screen update rate, so there
-      // is no need to do timing here.
-      engine_draw_frame(&engine);
+    if (source != nullptr) {
+      source->process(state, source);
     }
   }
+
+  engine_term_display(&engine);
 }
 // END_INCLUDE(all)

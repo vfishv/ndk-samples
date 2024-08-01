@@ -1,34 +1,31 @@
 plugins {
-    id 'com.android.application'
+    id "ndksamples.android.application"
 }
 
+// Caution: If you add any Java or Kotlin code to this project, or if you add
+// any dependencies which themselves use Java/Kotlin, you'll need to remove
+// `android:hasCode` from main/AndroidManifest.xml.
+
 android {
-    compileSdk 33
-    ndkVersion '25.1.8937393'
+    namespace 'com.example.native_activity'
 
     defaultConfig {
         applicationId = 'com.example.native_activity'
-        minSdkVersion 14
-        targetSdkVersion 33
+        // This is the minimum required for using Choreographer directly from the NDK. If you need
+        // to use a lower minSdkVersion, you must use the Java Choreographer API via JNI.
+        minSdkVersion 24
         externalNativeBuild {
             cmake {
                 arguments '-DANDROID_STL=c++_static'
             }
         }
     }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'),
-                    'proguard-rules.pro'
-        }
-    }
+
     externalNativeBuild {
         cmake {
             path 'src/main/cpp/CMakeLists.txt'
         }
     }
-    namespace 'com.example.native_activity'
 }
 
 dependencies {

@@ -3,7 +3,7 @@
 
 # Sets the minimum version of CMake required to build the native library.
 
-cmake_minimum_required(VERSION 3.18.1)
+cmake_minimum_required(VERSION 3.22.1)
 
 # Declares and names the project.
 
@@ -51,7 +51,7 @@ if(SANITIZE)
         target_link_options(sanitizers PUBLIC -fsanitize=address)
 
         # Grab libclang_rt.asan-${ARCH_STR}-android.so from the NDK.
-        file(GLOB ASAN_GLOB "${HINT_PATH}/../lib64/clang/*/lib/linux")
+        file(GLOB ASAN_GLOB "${HINT_PATH}/../lib/clang/*/lib/linux")
         find_file(ASAN
                 NAMES libclang_rt.asan-${ARCH_STR}-android.so
                 PATHS ${ASAN_GLOB})
@@ -76,7 +76,7 @@ if(SANITIZE)
         target_link_options(sanitizers PUBLIC -fsanitize=undefined -fno-sanitize-recover=undefined)
 
         # Grab libclang_rt.ubsan_standalone-${ARCH_STR}-android.so from the NDK.
-        file(GLOB UBSAN_GLOB "${HINT_PATH}/../lib64/clang/*/lib/linux")
+        file(GLOB UBSAN_GLOB "${HINT_PATH}/../lib/clang/*/lib/linux")
         find_file(UBSAN
                 NAMES libclang_rt.ubsan_standalone-${ARCH_STR}-android.so
                 PATHS ${UBSAN_GLOB})

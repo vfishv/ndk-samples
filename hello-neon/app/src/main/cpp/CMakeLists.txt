@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.22.1)
 
 # build cpufeatures as a static lib
 add_library(cpufeatures STATIC
@@ -27,8 +27,12 @@ elseif (${ANDROID_ABI} STREQUAL "x86")
                    -Wno-constant-conversion \
                    -Wno-static-in-inline")
     add_definitions(-DHAVE_NEON_X86=1 -DHAVE_NEON=1)
+elseif (${ANDROID_ABI} STREQUAL "x86_64")
+    set(neon_SRCS helloneon-intrinsics.c)
+    add_definitions(-DHAVE_NEON_X86=1 -DHAVE_NEON=1)
 else ()
-  set(neon_SRCS)
+    set(neon_SRCS helloneon-intrinsics.c)
+    add_definitions("-DHAVE_NEON=1")
 endif ()
 
 add_library(hello-neon SHARED helloneon.c ${neon_SRCS})

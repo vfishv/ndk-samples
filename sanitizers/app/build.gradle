@@ -1,39 +1,63 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    id "ndksamples.android.application"
+    id "ndksamples.android.kotlin"
 }
 
 android {
     namespace 'com.example.sanitizers'
-    ndkVersion '25.1.8937393'
-    compileSdk 32
 
     defaultConfig {
         applicationId "com.example.sanitizers"
+        // If you raise minSdk to 23 or higher, make sure you've read the note
+        // below about useLegacyPackaging.
+        //
+        // Note that the hwasan build type will override this. See the
+        // androidComponents stanza below.
         minSdk 21
-        targetSdk 32
         versionCode 1
         versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
+        // HWASan for devices starting from Android 14. Does no longer require a special system image.
+        // See https://developer.android.com/ndk/guides/hwasan.
         hwasan {
             initWith debug
+            debuggable true
+            packagingOptions {
+                jniLibs {
+                    // Needed for wrap.sh.
+                    useLegacyPackaging = true
+                }
+            }
             externalNativeBuild {
                 cmake {
                     arguments "-DANDROID_STL=c++_shared", "-DSANITIZE=hwasan"
                 }
             }
+            ndk {
+                abiFilters "arm64-v8a"
+            }
         }
         asan {
             initWith debug
             debuggable true
+            packagingOptions {
+                jniLibs {
+                    // Without legacy packaging, the Android package manager
+                    // will not extract the libraries from the APK, and the app
+                    // will instead load them directly from the APK. That saves
+                    // space on disk so is generally preferable, but ASan
+                    // doesn't work in that configuration, so we need to
+                    // opt-out of the new behavior.
+                    //
+                    // Note that this won't actually do anything to the sample
+                    // in its default configuration. The sample uses minSdk 21,
+                    // and legacy packaging is the default for all builds below
+                    // minSdk 23.
+                    useLegacyPackaging true
+                }
+            }
             externalNativeBuild {
                 cmake {
                     arguments "-DANDROID_ARM_MODE=arm", "-DANDROID_STL=c++_shared", "-DSANITIZE=asan"
@@ -49,35 +73,30 @@ android {
             }
         }
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
+
     externalNativeBuild {
         cmake {
             path file('src/main/cpp/CMakeLists.txt')
-            version '3.18.1'
         }
     }
+
     buildFeatures {
         viewBinding true
     }
-}
-androidComponents {
-    onVariants(selector().withBuildType("asan"), {
-        packaging.dex.useLegacyPackaging.set(true)
-    })
+
+    androidComponents {
+        beforeVariants(selector().withBuildType("hwasan")) { variantBuilder ->
+            variantBuilder.minSdk = 34
+        }
+    }
 }
 
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.7.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.7.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.androidx.constraintlayout
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.0'

@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.22.1)
 
 # configure import libs
 set(distribution_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../distribution)
@@ -31,7 +31,7 @@ set_target_properties(lib_gperf PROPERTIES IMPORTED_LOCATION
     ${distribution_DIR}/gperf/lib/${ANDROID_ABI}/libgperf.so)
 
 # build application's shared lib
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 add_library(hello-libs SHARED
             hello-libs.cpp)

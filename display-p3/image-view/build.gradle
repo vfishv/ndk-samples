@@ -31,7 +31,7 @@ android {
     }
     namespace 'com.example.widecolor'
 }
-
+/*
 // download third_party libs: mathfu, stb
 List<String> TARGET_DIR = [projectDir.toString() + '/../third_party/mathfu',
                            projectDir.toString() + '/../third_party/stb']
@@ -51,7 +51,7 @@ for (int i = 0; i < TARGET_DIR.size(); i++) {
        }
     }
 }
-
+*/
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
 }

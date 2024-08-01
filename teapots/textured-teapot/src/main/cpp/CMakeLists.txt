@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.22.1)
 project(TexturedTeapotNativeActivity LANGUAGES C CXX)
 
 # set up common compile options
@@ -42,12 +42,6 @@ add_library(${PROJECT_NAME}
     TexturedTeapotRender.cpp
     Texture.cpp
     AssetUtil.cpp
-)
-set_target_properties(${PROJECT_NAME}
-  PROPERTIES
-    CXX_STANDARD 11
-    CXX_STANDARD_REQUIRED YES
-    CXX_EXTENSIONS NO
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${commonDir})
 
