@@ -15,12 +15,14 @@
  *
  */
 #include <jni.h>
+#include <unistd.h>
 
 #include <string>
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_hellojni_HelloJni_stringFromJNI(JNIEnv* env,
                                                  jobject /* this */) {
+  getpagesize();
   std::string hello = "Hello from JNI.";
   return env->NewStringUTF(hello.c_str());
 }
